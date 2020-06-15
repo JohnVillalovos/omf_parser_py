@@ -14,4 +14,5 @@ References
 
 Documentation on the Relocatable Object Module Format (OMF) is in the document
 "Tool Interface Standard (TIS) Portable Formats Specification Version 1.1"
-located at: https://refspecs.linuxfoundation.org/elf/TIS1.1.pdf
+located at: https://refspecs.linuxfoundation.org/elf/TIS1.1.pdf The later
+version 1.2 removed documentation on OMF.
