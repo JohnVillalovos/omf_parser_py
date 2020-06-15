@@ -79,11 +79,6 @@ def get_multiple_names(data: bytes):
     return names
 
 
-def parse_record_80_theadr(data):
-    """Parse a T-Module Header Record"""
-    pass
-
-
 class Record:
     def __init__(self, *, record_data: bytes):
         self.record_data = record_data
@@ -373,7 +368,6 @@ RECORD_TYPES = {
         record_type=THEADR,
         description="T-Module Header Record",
         has_name=True,
-        parser=parse_record_80_theadr,
     ),
     LNAMES: RecordLayout(
         record_type=LNAMES,
