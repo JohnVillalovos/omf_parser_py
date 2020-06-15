@@ -54,47 +54,11 @@ def parse_object_module(object_module_data: bytes):
     records = []
 
     for raw_record in raw_records:
-        record_class = create_record(record_data=raw_record)
-        print(record_class)
+        record = create_record(record_data=raw_record)
+        print(record)
         print()
-        record_class = Record(record_data=raw_record)
 
-        record_layout = None
-        record: Dict[str, Any] = dict()
-
-#        if record_class.record_type in RECORD_TYPES:
-#            record_layout = RECORD_TYPES[record_class.record_type]
-#            rec_type_str = record_layout.description
-#        else:
-#            print("Unknown header", hex(record_class.record_type))
-#            rec_type_str = "Unknown header"
-#            raise ValueError("Unknown header: {}".format(hex(record_class.record_type)))
-#
-#        record = {
-#            "record_type": hex(record_class.record_type),
-#            "record_type_str": rec_type_str,
-#        }
-#
-#        # The record data without the record type and record length
-#        record_data = record_class.get_record_payload()
-#
-#        record["data"] = record_data
-#
-#        # Every record has a checksum as the last byte
-#        record["checksum"] = record_class.checksum
-#
-#        if record_layout and record_layout.parser:
-#            parsed_data = record_layout.parser(record_data)
-#            print("Parsed data:", parsed_data)
-#        if record_layout and record_layout.has_name:
-#            if record_layout.multiple_names:
-#                record["names"] = get_multiple_names(record_data)
-#            else:
-#                name = get_name(record_data)
-#                record["name"] = name
-#                print("Name:", name)
-#
-#        records.append(record)
+        records.append(record)
 
     return records
 
