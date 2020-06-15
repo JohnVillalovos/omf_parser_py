@@ -19,6 +19,7 @@
 # document "Tool Interface Standard (TIS) Portable Formats Specification
 # Version 1.1" located at:
 # https://refspecs.linuxfoundation.org/elf/TIS1.1.pdf
+# The later version 1.2 removed documentation on OMF.
 
 import copy
 import os
@@ -117,10 +118,10 @@ class Record:
             print("chk_sum:", chk_sum % 256)
             sys.exit()
 
-    def _get_name(self, data) -> str:
+    def _get_name(self, offset: int) -> str:
         # This should only be called if sure have a name
-        name_length = data[0]
-        name = data[1 : name_length + 1]
+        name_length = self._payload[offset]
+        name = self._payload[offset + 1 : name_length + offset + 1]
         return os.fsdecode(name)
 
     def __str__(self, *, extra: str = ""):
@@ -153,7 +154,7 @@ class THeaderRecord(Record):
     def __init__(self, record_data: bytes):
         super().__init__(record_data=record_data)
         assert self.record_type == THEADR
-        self.name = self._get_name(data=self._payload)
+        self.name = self._get_name(offset=0)
 
     def __str__(self):
         out_str = " name: {!r},".format(self.name)
@@ -251,15 +252,12 @@ class SegdefRecord(Record):
         if self.bit_32:
             offset += 2
         self.segment_name_index, add_offset = self.get_index_value(offset)
-        print("segment name index", self.segment_name_index)
 
         offset += add_offset
         self.class_name_index, add_offset = self.get_index_value(offset)
-        print("class name index", self.class_name_index)
 
         offset += add_offset
         self.overlay_name_index, add_offset = self.get_index_value(offset)
-        print("overlay name index", self.overlay_name_index)
 
     def __str__(self):
         extra = " alignment: {}, alignment_desc: {!r}".format(
@@ -309,6 +307,32 @@ class GrpdefRecord(Record):
         return super().__str__(extra=extra)
 
 
+class ExtdefRecord(Record):
+    def __init__(self, record_data: bytes):
+        super().__init__(record_data=record_data)
+        assert self.record_type == EXTDEF
+        self._parse_names()
+
+    def _parse_names(self):
+        self.names = []
+        self.indexes = []
+        offset = 0
+        while offset < (len(self._payload) - 1):
+            name = self._get_name(offset=offset)
+            self.names.append(name)
+            # Increase offset by length of name plus the length byte
+            offset += len(name) + 1
+            index, size = self.get_index_value(offset=offset)
+            self.indexes.append(index)
+            offset += size
+        # Our offset should be pointing at the last byte
+        assert offset == (len(self._payload) - 1)
+
+    def __str__(self):
+        extra = " names: {!r}, ".format(self.names)
+        extra += " indexes: {!r}".format(self.indexes)
+        return super().__str__(extra=extra)
+
 
 class RecordLayout:
     def __init__(
@@ -344,6 +368,8 @@ def create_record(record_data: bytes) -> Record:
         return SegdefRecord(record_data)
     if record_type == GRPDEF:
         return GrpdefRecord(record_data)
+    if record_type == EXTDEF:
+        return ExtdefRecord(record_data)
 
     return base_record
 
