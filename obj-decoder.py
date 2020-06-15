@@ -327,10 +327,27 @@ class GrpdefRecord(Record):
     def __init__(self, record_data: bytes):
         super().__init__(record_data=record_data)
         assert self.record_type == GRPDEF
+        self._parse_indexes()
+
+    def _parse_indexes(self):
+        offset = 0
+        self.group_name_index, size = self.get_index_value(offset)
+        offset += size
+        self.group_components = []
+        # compensate for the check_sum as last byte
+        while offset < (len(self._payload) - 1):
+            assert self._payload[offset] == 0xFF
+            offset += 1
+            index, size = self.get_index_value(offset)
+            self.group_components.append(index)
+            offset += size
+        # Our offset should be pointing at the last byte
+        assert offset == (len(self._payload) - 1)
 
     def __str__(self):
-        out_str = ""
-        return super().__str__(extra=out_str)
+        extra = " grp_name_idx: {}, ".format(self.group_name_index)
+        extra += " grp_components: {!r}, ".format(self.group_components)
+        return super().__str__(extra=extra)
 
 
 
