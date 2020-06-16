@@ -29,7 +29,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 
 def main():
-    with open("numon.obj", "rb") as in_file:
+    with open("novnet.obj", "rb") as in_file:
         data = in_file.read()
 
     # pprint.pprint(parse_object_module(data))
@@ -414,6 +414,33 @@ class LedataRecord(Record):
         return super().__str__(extra=extra)
 
 
+class ComentRecord(Record):
+    def __init__(self, record_data: bytes):
+        super().__init__(record_data=record_data)
+        print("payload:", self._payload)
+        assert self.record_type == COMENT
+        self.record_type_desc = "Comment Record"
+        self._parse_record()
+
+    def _parse_record(self):
+        offset = 0
+        self.comment_type = self._payload[offset]
+        offset += 1
+        self.comment_class = self._payload[offset]
+        offset += 1
+        self.comment_string = self._payload[offset:-1]
+        offset += len(self.comment_string)
+
+        # Our offset should be pointing at the last byte
+        assert offset == (len(self._payload) - 1)
+
+    def __str__(self):
+        extra = " comment_type: 0x{:02X},".format(self.comment_type)
+        extra += " comment_class: 0x{:02X},".format(self.comment_class)
+        extra += " comment: {!r},".format(self.comment_string)
+        return super().__str__(extra=extra)
+
+
 def create_record(record_data: bytes) -> Record:
     base_record = Record(record_data=record_data)
     record_type = base_record.record_type
@@ -434,7 +461,10 @@ def create_record(record_data: bytes) -> Record:
     # TODO(jlvillal): Add support for 32 bit LEDATA
     if record_type == LEDATA:
         return LedataRecord(record_data)
+    if record_type == COMENT:
+        return ComentRecord(record_data)
 
+    raise ValueError("Unknown type: 0x{:02X}".format(record_type))
     return base_record
 
 
@@ -467,6 +497,7 @@ class RecordLayout:
 THEADR = 0x80
 LHEADR = 0x82
 RHEADR = 0x63
+COMENT = 0x88
 MODEND = 0x8A
 EXTDEF = 0x8C
 PUBDEF = 0x90
