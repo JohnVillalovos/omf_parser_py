@@ -384,6 +384,36 @@ class PubdefRecord(Record):
         return super().__str__(extra=extra)
 
 
+class LedataRecord(Record):
+    def __init__(self, record_data: bytes):
+        super().__init__(record_data=record_data)
+        assert self.record_type == LEDATA
+        self._parse_record()
+
+    def _parse_record(self):
+        offset = 0
+        self.segment_index, count = self.get_index_value(offset=offset)
+        offset += count
+        self.enumerated_data_offset = int.from_bytes(
+            self._payload[offset : offset + 2], byteorder="little", signed=False
+        )
+        offset += 2
+        self.data_bytes = self._payload[offset:-1]
+        offset += len(self.data_bytes)
+        # Our offset should be pointing at the last byte
+        assert offset == (len(self._payload) - 1)
+
+    def __str__(self):
+        extra = " segment_idx: {},".format(self.segment_index)
+        extra += " enum_data_off: {},".format(self.enumerated_data_offset)
+        data_bytes_hex = ""
+        for char in self.data_bytes:
+            data_bytes_hex += "0x{:02X} ".format(char)
+        #        extra += " data_bytes: {!r},".format(self.data_bytes)
+        extra += " data_bytes: {!r},".format(data_bytes_hex)
+        return super().__str__(extra=extra)
+
+
 def create_record(record_data: bytes) -> Record:
     base_record = Record(record_data=record_data)
     record_type = base_record.record_type
@@ -401,6 +431,9 @@ def create_record(record_data: bytes) -> Record:
     # TODO(jlvillal): Add support for 32 bit PUBDEF
     if record_type == PUBDEF:
         return PubdefRecord(record_data)
+    # TODO(jlvillal): Add support for 32 bit LEDATA
+    if record_type == LEDATA:
+        return LedataRecord(record_data)
 
     return base_record
 
