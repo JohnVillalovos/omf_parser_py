@@ -276,7 +276,6 @@ class SegdefRecord(Record):
         extra += " cls_name_idx: {},".format(self.class_name_index)
         extra += " ovr_name_idx: {},".format(self.overlay_name_index)
 
-
         return super().__str__(extra=extra)
 
 
@@ -334,6 +333,81 @@ class ExtdefRecord(Record):
         return super().__str__(extra=extra)
 
 
+class PubdefRecord(Record):
+    def __init__(self, record_data: bytes):
+        super().__init__(record_data=record_data)
+        assert self.record_type == PUBDEF
+        self._parse_record()
+
+    def _parse_record(self):
+        offset = 0
+        self.base_group_index, count = self.get_index_value(offset=offset)
+        offset += count
+        self.base_segment_index, count = self.get_index_value(offset=offset)
+        offset += count
+
+        self.base_frame = None
+        if self.base_segment_index == 0:
+            # Docs say this normally shouldn't occur
+            self.base_frame = int.from_bytes(
+                self._payload[offset : offset + 2], byteorder="little", signed=False
+            )
+            offset += 2
+
+        self.names = []
+        self.public_offsets = []
+        self.type_indexes = []
+        while offset < (len(self._payload) - 1):
+            name = self._get_name(offset=offset)
+            self.names.append(name)
+            offset += len(name) + 1
+            public_offset = int.from_bytes(
+                self._payload[offset : offset + 2], byteorder="little", signed=False
+            )
+            self.public_offsets.append(public_offset)
+            offset += 2
+            type_index = self._payload[offset]
+            self.type_indexes.append(type_index)
+            offset += 1
+
+        # Our offset should be pointing at the last byte
+        assert offset == (len(self._payload) - 1)
+
+    def __str__(self):
+        extra = " base_grp_idx: {},".format(self.base_group_index)
+        extra += " base_seg_idx: {},".format(self.base_segment_index)
+        if self.base_frame != None:
+            extra += " base_frame: {}".format(self.base_frame)
+        extra += " names: {!r},".format(self.names)
+        extra += " public_offsets: {!r},".format(self.public_offsets)
+        extra += " type_indexes: {!r},".format(self.type_indexes)
+        return super().__str__(extra=extra)
+
+
+def create_record(record_data: bytes) -> Record:
+    base_record = Record(record_data=record_data)
+    record_type = base_record.record_type
+
+    if record_type == THEADR:
+        return THeaderRecord(record_data)
+    if record_type == LNAMES:
+        return LNamesRecord(record_data)
+    if record_type in (SEGDEF, SEGDEF_32):
+        return SegdefRecord(record_data)
+    if record_type == GRPDEF:
+        return GrpdefRecord(record_data)
+    if record_type == EXTDEF:
+        return ExtdefRecord(record_data)
+    # TODO(jlvillal): Add support for 32 bit PUBDEF
+    if record_type == PUBDEF:
+        return PubdefRecord(record_data)
+
+    return base_record
+
+
+##################################################################
+
+
 class RecordLayout:
     def __init__(
         self,
@@ -356,24 +430,6 @@ class RecordLayout:
             )
 
 
-def create_record(record_data: bytes) -> Record:
-    base_record = Record(record_data=record_data)
-    record_type = base_record.record_type
-
-    if record_type == THEADR:
-        return THeaderRecord(record_data)
-    if record_type == LNAMES:
-        return LNamesRecord(record_data)
-    if record_type in (SEGDEF, SEGDEF_32):
-        return SegdefRecord(record_data)
-    if record_type == GRPDEF:
-        return GrpdefRecord(record_data)
-    if record_type == EXTDEF:
-        return ExtdefRecord(record_data)
-
-    return base_record
-
-
 # Constants
 THEADR = 0x80
 LHEADR = 0x82
@@ -391,9 +447,7 @@ SEGDEF_32 = 0x99
 
 RECORD_TYPES = {
     THEADR: RecordLayout(
-        record_type=THEADR,
-        description="T-Module Header Record",
-        has_name=True,
+        record_type=THEADR, description="T-Module Header Record", has_name=True,
     ),
     LNAMES: RecordLayout(
         record_type=LNAMES,
