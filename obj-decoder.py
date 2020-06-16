@@ -260,11 +260,11 @@ class SegdefRecord(Record):
         self.overlay_name_index, add_offset = self.get_index_value(offset)
 
     def __str__(self):
-        extra = " alignment: {}, alignment_desc: {!r}".format(
+        extra = " alignment: {}, alignment_desc: {!r},".format(
             self.alignment, self.alignment_desc
         )
         if self.have_attribute_frame:
-            extra += "attribute_frame_number: {}, attribute_offset: {}".format(
+            extra += "attribute_frame_number: {}, attribute_offset: {},".format(
                 self.attribute_frame_number, self.attribute_offset
             )
         extra += " combination: {}, combination_desc: {!r},".format(
@@ -302,8 +302,8 @@ class GrpdefRecord(Record):
         assert offset == (len(self._payload) - 1)
 
     def __str__(self):
-        extra = " grp_name_idx: {}, ".format(self.group_name_index)
-        extra += " grp_components: {!r}, ".format(self.group_components)
+        extra = " grp_name_idx: {},".format(self.group_name_index)
+        extra += " grp_components: {!r},".format(self.group_components)
         return super().__str__(extra=extra)
 
 
@@ -329,8 +329,8 @@ class ExtdefRecord(Record):
         assert offset == (len(self._payload) - 1)
 
     def __str__(self):
-        extra = " names: {!r}, ".format(self.names)
-        extra += " indexes: {!r}".format(self.indexes)
+        extra = " names: {!r},".format(self.names)
+        extra += " indexes: {!r},".format(self.indexes)
         return super().__str__(extra=extra)
 
 
