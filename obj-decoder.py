@@ -29,7 +29,8 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 
 def main():
-    with open("novnet.obj", "rb") as in_file:
+    # with open("novnet.obj", "rb") as in_file:
+    with open("numon.obj", "rb") as in_file:
         data = in_file.read()
 
     # pprint.pprint(parse_object_module(data))
@@ -417,7 +418,6 @@ class LedataRecord(Record):
 class ComentRecord(Record):
     def __init__(self, record_data: bytes):
         super().__init__(record_data=record_data)
-        print("payload:", self._payload)
         assert self.record_type == COMENT
         self.record_type_desc = "Comment Record"
         self._parse_record()
@@ -438,6 +438,65 @@ class ComentRecord(Record):
         extra = " comment_type: 0x{:02X},".format(self.comment_type)
         extra += " comment_class: 0x{:02X},".format(self.comment_class)
         extra += " comment: {!r},".format(self.comment_string)
+        return super().__str__(extra=extra)
+
+
+class FixuppRecord(Record):
+    def __init__(self, record_data: bytes):
+        super().__init__(record_data=record_data)
+        assert self.record_type == FIXUPP
+        self.record_type_desc = "Fixup Record"
+        self._parse_record()
+
+    def _parse_record(self):
+        THREAD = 0
+        FIXUP = 1
+        self.subrecords = []
+        offset = 0
+        return  # TODO ....
+        while offset < (len(self._payload) - 1):
+            temp = self._payload[offset]
+            if temp & 0x80:
+                rec_type = FIXUP
+            else:
+                rec_type = THREAD
+
+        # Our offset should be pointing at the last byte
+        assert offset == (len(self._payload) - 1)
+
+    def _parse_fixup(offset):
+        pass
+
+    def _parse_thread(offset):
+        pass
+
+    def __str__(self):
+        extra = ""
+        return super().__str__(extra=extra)
+
+
+class ModendRecord(Record):
+    def __init__(self, record_data: bytes):
+        super().__init__(record_data=record_data)
+        assert self.record_type == MODEND
+        self.record_type_desc = "Module End Record"
+        self._parse_record()
+
+    def _parse_record(self):
+        offset = 0
+        self.module_type = self._payload[offset]
+        self.main_mod = (self.module_type >> 7) == 1
+        self.start_mod = ((self.module_type >> 6) & 0x01) == 1
+        offset += 1
+
+        return
+        # Our offset should be pointing at the last byte
+        assert offset == (len(self._payload) - 1)
+
+    def __str__(self):
+        extra = " module_type: 0x{:02X},".format(self.module_type)
+        extra += " main_mod: {},".format(self.main_mod)
+        extra += " start_mod: {},".format(self.start_mod)
         return super().__str__(extra=extra)
 
 
@@ -463,6 +522,10 @@ def create_record(record_data: bytes) -> Record:
         return LedataRecord(record_data)
     if record_type == COMENT:
         return ComentRecord(record_data)
+    if record_type == FIXUPP:
+        return FixuppRecord(record_data)
+    if record_type == MODEND:
+        return ModendRecord(record_data)
 
     raise ValueError("Unknown type: 0x{:02X}".format(record_type))
     return base_record
@@ -504,6 +567,7 @@ PUBDEF = 0x90
 LNAMES = 0x96
 SEGDEF = 0x98
 GRPDEF = 0x9A
+FIXUPP = 0x9C
 LEDATA = 0xA0
 # 32 Bit version of SEGDEF
 SEGDEF_32 = 0x99
