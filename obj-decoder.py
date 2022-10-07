@@ -23,9 +23,8 @@
 
 import copy
 import os
-import pprint
 import sys
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Callable, List, Optional, Tuple
 
 
 def main():
@@ -44,10 +43,12 @@ def extract_records(object_module_data: bytes) -> List[bytes]:
     while data:
         # Record length is stored in offset 1 & 2 of the record as a 16 bit
         # little-endian integer
-        record_length = int.from_bytes(data[1:2], byteorder="little", signed=False)
+        record_length = int.from_bytes(data[1:3], byteorder="little", signed=False)
         record = data[: record_length + 3]
         records.append(record)
-        data = data[3 + record_length :]
+        data = data[3 + record_length:]
+        if data[0] == MODEND:
+            break
     return records
 
 
@@ -67,7 +68,7 @@ def parse_object_module(object_module_data: bytes):
 
 def get_name(data: bytes):
     name_length = data[0]
-    name = data[1 : name_length + 1]
+    name = data[1: name_length + 1]
     return os.fsdecode(name)
 
 
@@ -76,7 +77,7 @@ def get_multiple_names(data: bytes):
     while len(data) > 1:
         name = get_name(data)
         names.append(name)
-        data = data[1 + len(name) :]
+        data = data[1 + len(name):]
     assert len(data) == 1
     return names
 
@@ -90,7 +91,7 @@ class Record:
         if self.record_type in RECORD_TYPES:
             self.record_type_desc = RECORD_TYPES[self.record_type].description
         self.record_length = int.from_bytes(
-            record_data[1:2], byteorder="little", signed=False
+            record_data[1:3], byteorder="little", signed=False
         )
         self._validate_record()
         self.checksum: int = self.record_data[-1]
@@ -114,7 +115,7 @@ class Record:
             chk_sum += character
         if chk_sum % 256 != 0:
             print("ERROR: Checksum failure")
-            print(data)
+            print(self.record_data)
             print("chk_sum:", chk_sum)
             print("chk_sum:", chk_sum % 256)
             sys.exit()
@@ -122,7 +123,7 @@ class Record:
     def _get_name(self, offset: int) -> str:
         # This should only be called if sure have a name
         name_length = self._payload[offset]
-        name = self._payload[offset + 1 : name_length + offset + 1]
+        name = self._payload[offset + 1: name_length + offset + 1]
         return os.fsdecode(name)
 
     def __str__(self, *, extra: str = ""):
@@ -148,7 +149,7 @@ class Record:
         else:
             index = index_1
             size = 1
-        return (index, size)
+        return index, size
 
 
 class THeaderRecord(Record):
@@ -157,7 +158,7 @@ class THeaderRecord(Record):
         assert self.record_type == THEADR
         self.name = self._get_name(offset=0)
 
-    def __str__(self):
+    def __str__(self, **kwargs):
         out_str = " name: {!r},".format(self.name)
         return super().__str__(extra=out_str)
 
@@ -168,7 +169,7 @@ class LNamesRecord(Record):
         assert self.record_type == LNAMES
         self.names = get_multiple_names(data=self._payload)
 
-    def __str__(self):
+    def __str__(self, **kwargs):
         out_str = " names: {!r},".format(self.names)
         return super().__str__(extra=out_str)
 
@@ -260,7 +261,7 @@ class SegdefRecord(Record):
         offset += add_offset
         self.overlay_name_index, add_offset = self.get_index_value(offset)
 
-    def __str__(self):
+    def __str__(self, **kwargs):
         extra = " alignment: {}, alignment_desc: {!r},".format(
             self.alignment, self.alignment_desc
         )
@@ -301,7 +302,7 @@ class GrpdefRecord(Record):
         # Our offset should be pointing at the last byte
         assert offset == (len(self._payload) - 1)
 
-    def __str__(self):
+    def __str__(self, **kwargs):
         extra = " grp_name_idx: {},".format(self.group_name_index)
         extra += " grp_components: {!r},".format(self.group_components)
         return super().__str__(extra=extra)
@@ -328,7 +329,7 @@ class ExtdefRecord(Record):
         # Our offset should be pointing at the last byte
         assert offset == (len(self._payload) - 1)
 
-    def __str__(self):
+    def __str__(self, **kwargs):
         extra = " names: {!r},".format(self.names)
         extra += " indexes: {!r},".format(self.indexes)
         return super().__str__(extra=extra)
@@ -351,7 +352,7 @@ class PubdefRecord(Record):
         if self.base_segment_index == 0:
             # Docs say this normally shouldn't occur
             self.base_frame = int.from_bytes(
-                self._payload[offset : offset + 2], byteorder="little", signed=False
+                self._payload[offset: offset + 2], byteorder="little", signed=False
             )
             offset += 2
 
@@ -363,7 +364,7 @@ class PubdefRecord(Record):
             self.names.append(name)
             offset += len(name) + 1
             public_offset = int.from_bytes(
-                self._payload[offset : offset + 2], byteorder="little", signed=False
+                self._payload[offset: offset + 2], byteorder="little", signed=False
             )
             self.public_offsets.append(public_offset)
             offset += 2
@@ -374,10 +375,10 @@ class PubdefRecord(Record):
         # Our offset should be pointing at the last byte
         assert offset == (len(self._payload) - 1)
 
-    def __str__(self):
+    def __str__(self, **kwargs):
         extra = " base_grp_idx: {},".format(self.base_group_index)
         extra += " base_seg_idx: {},".format(self.base_segment_index)
-        if self.base_frame != None:
+        if self.base_frame is not None:
             extra += " base_frame: {}".format(self.base_frame)
         extra += " names: {!r},".format(self.names)
         extra += " public_offsets: {!r},".format(self.public_offsets)
@@ -396,7 +397,7 @@ class LedataRecord(Record):
         self.segment_index, count = self.get_index_value(offset=offset)
         offset += count
         self.enumerated_data_offset = int.from_bytes(
-            self._payload[offset : offset + 2], byteorder="little", signed=False
+            self._payload[offset: offset + 2], byteorder="little", signed=False
         )
         offset += 2
         self.data_bytes = self._payload[offset:-1]
@@ -404,7 +405,7 @@ class LedataRecord(Record):
         # Our offset should be pointing at the last byte
         assert offset == (len(self._payload) - 1)
 
-    def __str__(self):
+    def __str__(self, **kwargs):
         extra = " segment_idx: {},".format(self.segment_index)
         extra += " enum_data_off: {},".format(self.enumerated_data_offset)
         data_bytes_hex = ""
@@ -421,6 +422,29 @@ class ComentRecord(Record):
         assert self.record_type == COMENT
         self.record_type_desc = "Comment Record"
         self._parse_record()
+        self.comment_class_string = {
+            0x00: "CMT_LANGUAGE_TRANS",  # Language translator comment
+            0x01: "CMT_INTEL_COPYRIGHT",  # INTEL Copyright record
+            0x9b: "CMT_WAT_PROC_MODEL",  # Watcom processor & model info
+            0x9c: "CMT_MS_DOS_VERSION",  # obsolete
+            0x9d: "CMT_MS_PROC_MODEL",  # Microsoft processor & model info
+            0x9e: "CMT_DOSSEG",  # DOSSEG directive
+            0x9f: "CMT_DEFAULT_LIBRARY",  # Default library cmd
+            0xa0: "CMT_DLL_ENTRY",  # MS extension (misleading name!)
+            0xa1: "CMT_MS_OMF",  # Microsoft's brand of OMF flag
+            0xa2: "CMT_MS_END_PASS_1",  # MS end of linker pass 1
+            0xa3: "CMT_LIBMOD",  # Record specifying name of object
+            0xa4: "CMT_EXESTR",  # Executable string
+            0xa6: "CMT_INCERR",  # Incremental Compilation Error
+            0xa7: "CMT_NOPAD",  # No segment padding
+            0xa8: "CMT_WKEXT",  # Weak external record
+            0xa9: "CMT_LZEXT",  # Lazy external record
+            0xaa: "CMT_EASY_OMF",  # Easy OMF signature record
+            0xe9: "CMT_DEPENDENCY",  # Borland dependency record
+            0xfd: "CMT_DISASM_DIRECTIVE",  # Directive to disassemblers
+            0xfe: "CMT_LINKER_DIRECTIVE",  # Linker directive
+            0xff: "CMT_SOURCE_NAME"  # name of the source file
+        }
 
     def _parse_record(self):
         offset = 0
@@ -434,9 +458,14 @@ class ComentRecord(Record):
         # Our offset should be pointing at the last byte
         assert offset == (len(self._payload) - 1)
 
-    def __str__(self):
+    def __str__(self, **kwargs):
         extra = " comment_type: 0x{:02X},".format(self.comment_type)
-        extra += " comment_class: 0x{:02X},".format(self.comment_class)
+        class_string = ""
+        try:
+            class_string = " - '{}'".format(self.comment_class_string[self.comment_class])
+        except KeyError:
+            pass
+        extra += " comment_class: 0x{:02X}{},".format(self.comment_class, class_string)
         extra += " comment: {!r},".format(self.comment_string)
         return super().__str__(extra=extra)
 
@@ -453,16 +482,31 @@ class FixuppRecord(Record):
         FIXUP = 1
         self.subrecords = []
         offset = 0
-        return  # TODO ....
-        while offset < (len(self._payload) - 1):
-            temp = self._payload[offset]
-            if temp & 0x80:
-                rec_type = FIXUP
-            else:
-                rec_type = THREAD
+        # while offset < (len(self._payload) - 1):
+        #     temp = self._payload[offset]
+        #     offset += 1
+        #     if temp & 0x80:
+        #         rec_type = FIXUP
+        #         locat = self._payload[offset + 1] * 0xff + self._payload[offset]
+        #         offset += 2
+        #         fixdat = self._payload[offset]
+        #         offset += 1
+        #         frame_datum = self._payload[offset]
+        #         offset += 1
+        #         target_datum = self._payload[offset]
+        #         offset += 1
+        #         target_displacement = self._payload[offset]
+        #         offset += 2
+        #     else:
+        #         rec_type = THREAD
+        #         methode = (temp >> 2) & 0b0111
+        #         thred = temp & 0b0011
+        #         if methode in [0, 1, 2]:
+        #             subfields = self._payload[offset]
+        #             offset += 1
 
         # Our offset should be pointing at the last byte
-        assert offset == (len(self._payload) - 1)
+        # assert offset == (len(self._payload) - 1)
 
     def _parse_fixup(offset):
         pass
@@ -470,7 +514,7 @@ class FixuppRecord(Record):
     def _parse_thread(offset):
         pass
 
-    def __str__(self):
+    def __str__(self, **kwargs):
         extra = ""
         return super().__str__(extra=extra)
 
@@ -490,10 +534,8 @@ class ModendRecord(Record):
         offset += 1
 
         return
-        # Our offset should be pointing at the last byte
-        assert offset == (len(self._payload) - 1)
 
-    def __str__(self):
+    def __str__(self, **kwargs):
         extra = " module_type: 0x{:02X},".format(self.module_type)
         extra += " main_mod: {},".format(self.main_mod)
         extra += " start_mod: {},".format(self.start_mod)
@@ -528,7 +570,6 @@ def create_record(record_data: bytes) -> Record:
         return ModendRecord(record_data)
 
     raise ValueError("Unknown type: 0x{:02X}".format(record_type))
-    return base_record
 
 
 ##################################################################
@@ -536,13 +577,13 @@ def create_record(record_data: bytes) -> Record:
 
 class RecordLayout:
     def __init__(
-        self,
-        *,
-        record_type: int,
-        description: str,
-        has_name: bool,
-        parser: Optional[Callable] = None,
-        multiple_names: bool = False,
+            self,
+            *,
+            record_type: int,
+            description: str,
+            has_name: bool,
+            parser: Optional[Callable] = None,
+            multiple_names: bool = False,
     ):
         self.record_type = record_type
         self.description = description
@@ -557,21 +598,70 @@ class RecordLayout:
 
 
 # Constants
-THEADR = 0x80
-LHEADR = 0x82
-RHEADR = 0x63
-COMENT = 0x88
-MODEND = 0x8A
-EXTDEF = 0x8C
-PUBDEF = 0x90
-LNAMES = 0x96
-SEGDEF = 0x98
-GRPDEF = 0x9A
-FIXUPP = 0x9C
-LEDATA = 0xA0
-# 32 Bit version of SEGDEF
-SEGDEF_32 = 0x99
-
+# RHEADR == 0x63
+RHEADR = 0x6e  # R-Module Header Record
+# REGINT = 0x70  # Register Initialization Record
+# REDATA= 0x72  # Relocatable Enumerated Data Record
+# RIDATA= 0x74  # Relocatable Iterated Data Record
+# OVLDEF= 0x76  # Overlay Definition Record
+# ENDREC= 0x78  # End Record
+# BLKREC= 0x7A  # Block Definition Record
+# BLKDEF_32 = 0x7b # weird extension for QNX MAX assembler
+# BKLEND= 0x7C  # Block End Record
+# BLKEND_32 = 0x7d  # used by QNX MAX assembler
+# DEBSYM= 0x7E  # Debug Symbols Record
+THEADR = 0x80  # T-Module Header Record
+LHEADR = 0x82  # L-Module Header Record
+# PEDATA = 0x84  # Physical Enumerated Data (?)
+# PIDATA = 0x86  # Physical Iterated Data (?)
+COMENT = 0x88  # Comment Record
+MODEND = 0x8A  # Module End Record
+# MODENDL = 0x8B  # Module End Record
+EXTDEF = 0x8C  # External Names Definition Record
+# TYPDEF = 0x8E  # Type Definitions Record
+PUBDEF = 0x90  # Public Names Definition Record
+# PUBDEF_32 = 0x91  # Public Names Definition Record
+# LOCSYM = 0x92  # Local Symbols Record
+# LINNUM = 0x94  # Line Numbers Record
+# LINNUM_32 = 0x95  # 32-bit line number record.
+LNAMES = 0x96  # List of Names Record
+SEGDEF = 0x98  # Segment Definition Record
+SEGDEF_32 = 0x99  # Segment Definition Record
+GRPDEF = 0x9A  # Group Definition Record
+FIXUPP = 0x9C  # Fix-Up Record
+# FIXUPP_32 = 0x9D  # Fix-Up Record
+LEDATA = 0xA0  # Logical Enumerated Data
+# LEDATA_32 = 0xA1  # Logical Enumerated Data
+# LIDATA = 0xA2  # Logical Iterated Data
+# LIDATA_32 = 0xA3  # Logical Iterated Data
+# LIBHED = 0xA4  # Library Header Record
+# LIBNAM = 0xA6  # Library Module Names Record
+# LIBLOC = 0xA8  # Library Module Locations Record
+# LIBDIC = 0xAA  # Library Dictionary Record
+# COMDEF = 0xB0  # Communal Data Definition Record
+# BAKPAT = 0xb2  # backpatch record (for Quick C)
+# BAKPAT_32 = 0xb3
+# LEXTDEF = 0xB4  # Local External Definition
+# LEXTDEF_32 = 0xb5  # 32-bit local import names record
+# LPUBDEF = 0xB6  # Local Public Definition
+# LPUBDF2 = 0xB7  # Local Public Definition (2nd case?)
+# LCOMDEF = 0xB8  # Local Communal Data Definition
+# CEXTDEF = 0xbc  # external reference to a COMDAT
+# COMDAT = 0xc2  # initialized communal data record
+# COMDAT32 = 0xc3  # initialized 32-bit communal data record
+# COMD32 = 0xc3  # initialized 32-bit communal data record
+# LINSYM = 0xc4  # LINNUM for a COMDAT
+# LINSYM32 = 0xc5  # 32-bit LINNUM for a COMDAT
+# LINS32 = 0xc5  # 32-bit LINNUM for a COMDAT
+# ALIAS = 0xc6  # alias definition record
+# NBKPAT = 0xc8  # named backpatch record (quick c?)
+# NBKPAT32 = 0xc9  # 32-bit named backpatch record
+# NBKP32 = 0xc9  # 32-bit named backpatch record
+# LLNAMES = 0xca  # a "local" lnames
+# VERNUM = 0xcc  # TIS version number record
+# VENDEXT = 0xce  # TIS vendor extension record
+# LIBHDR = 0xF0  # Library Header Record
+# LIBEND = 0xF1  # Library Trailer Record
 
 RECORD_TYPES = {
     THEADR: RecordLayout(
@@ -610,7 +700,6 @@ RECORD_TYPES = {
 }
 
 RECORD_TYPES_WITH_NAMES = {THEADR, LNAMES}
-
 
 if "__main__" == __name__:
     sys.exit(main())
